@@ -18,14 +18,48 @@ inference-audit is a Python library and command-line tool that audits the qualit
 Every stage of the NLP pipeline,from a researcher publishing a dataset to a practitioner selecting one for model training ,depends on data quality, yet there is no standard way to answer a simple question: *how do I know my dataset is actually good?* At present, labs and researchers rewrite quality-checking scripts from scratch for every corpus release, producing results that are inconsistent and not comparable across papers, even within the same lab. Reviewers have no common standard to point to when requesting quality evidence. inference-audit addresses this gap directly by becoming a standardised, pip-installable, reproducible tool that any NLP researcher can cite in a methods section — turning dataset quality from an ad hoc claim into a falsifiable, versioned report.
 
 ---
-
 ## 3. Technical Approach
-*(Owner: Research/Implementation Engineer — pending)*
+*(Owner: Research/Implementation Engineer)*
+
+### Near-Duplicate Detection Threshold (MinHash/LSH)
+
+**Method:** Tested character-3-gram Jaccard similarity on 20 real pairs from RUEmoCorp (`Khubaib01/RUEmoCorp`, `ruemocorp-annotated` split) — 15 true near-duplicates spanning punctuation-only differences, word reordering, single- and multi-word spelling variants, minor additions, and a case-scrambled repost pattern found naturally in the corpus; 5 distinct pairs sharing surface vocabulary/tone but differing in actual meaning.
+
+**Result:** With text lowercased before shingling, true duplicates scored 0.851–1.000 (avg 0.943); distinct pairs scored 0.053–0.164 (avg 0.107) — a clean separation with no overlap.
+
+**Finding:** `threshold=0.8` (the brief's suggested default) correctly classifies all 20 pairs — but only when lowercasing is applied before fingerprinting. Without it, the case-scrambled duplicate pattern found in this corpus would score significantly lower and risk falling below threshold, producing false negatives.
+
+**Recommendation:** `check_near_duplicates` must lowercase text as a preprocessing step before MinHash fingerprinting.
+
+**Known limitation:** Sample size (20 pairs, ~5 pattern types) is a first-pass feasibility check. Recommend expanding during Week 3 implementation, and stress-testing with synthetically injected duplicates since natural near-duplicates are relatively rare in this dataset.
+
+### Language Contamination Detection Reliability (langdetect)
+
+**Method:** Tested `langdetect` on 12 real Roman Urdu messages at 3/5/10/20-token lengths (44 total detections). Ran a seed-determinism test and a sanity check against real English/French/Spanish text to rule out tool malfunction.
+
+**Result:** `langdetect` never correctly identified Roman Urdu at any token length tested. Guesses scattered across 10+ unrelated languages with no improvement at longer lengths. Sanity check confirmed the tool works correctly on languages it supports (100% accuracy on English/French/Spanish). Seed-determinism test confirmed `DetectorFactory.seed = 0` is required: 2/5 texts returned different language labels across repeated runs without it; all stable once set.
+
+**Finding:** There is no "minimum reliable length" for Roman Urdu with `langdetect` — it has no language profile for Roman Urdu at all, a structural limitation, not a short-text weakness.
+
+**Recommendation:** `check_language_contamination` cannot use "not detected as Urdu" as its contamination signal, since that would flag the entire dataset as 100% contaminated. Instead, only flag samples confidently (>0.9 probability) identified as a real, unrelated language. `DetectorFactory.seed = 0` must be set at module init.
+
+### Scoring Formulas (All 5 Checks)
+
+| Check | Formula | Justification |
+|---|---|---|
+| `check_near_duplicates` | `100 × (1 - duplicate_rate)` | duplicate_rate = flagged pairs / total samples. Grounded in threshold finding above. |
+| `check_label_distribution` | `100 × (1 - min(imbalance_ratio / max_acceptable_ratio, 1))` | max_acceptable_ratio configurable (proposed default: 20). 1:1 balance → 100; ratio ≥ 20:1 → 0, linear between. |
+| `check_missing_values` | `100 × (1 - missing_rate)` | missing_rate = (null + whitespace-only + below-length-threshold) / total. |
+| `check_language_contamination` | `100 × (1 - confident_contamination_rate)` | Only counts confident (>0.9 prob) detections of a real, unrelated language — per finding above. |
+| `check_annotation_consistency` | `100 × (1 - low_confidence_rate)` | low_confidence_rate = samples below threshold (proposed default: 0.6) / total with a confidence column. Returns `None` if no confidence column exists. |
+
+**Note:** Per the brief, `label_distribution` and `near_duplicates` are weighted 1.5× in the overall `AuditReport` score — flagging for team confirmation this still applies.
+
+---
 
 
 
 ---
-
 ## 4. Evaluation Plan
 *(Owner: Integration/Evaluation Engineer — role shared between Lead and Research/Implementation Engineer)*
 
@@ -82,6 +116,7 @@ Only once all three layers above pass will the package be considered ready for P
 
 2. **Reduced team size.** Unlike Projects A and B, this project has two members rather than three ,there is no dedicated Integration/Evaluation Engineer. Fixture generation, test-suite ownership, and performance/coverage verification are split between the Lead and Research/Implementation Engineer. **Mitigation:** evaluation responsibilities are explicitly assigned per-file in the Module Ownership Table above, with the Lead performing an independent final verification pass rather than relying solely on self-review.
 
+3. **langdetect cannot reliably detect Roman Urdu.** Testing on 12 real RUEmoCorp messages at 3/5/10/20-token lengths (44 total detections) found `langdetect` never correctly identified Roman Urdu at any length tested — guesses scattered across 10+ unrelated languages (Somali, Indonesian, Estonian, Tagalog, etc.) with no improvement at longer lengths. A sanity check confirmed the tool works correctly on languages it does support (100% accuracy on real English/French/Spanish text), ruling out a tool malfunction — the issue is that Roman Urdu simply has no language profile in `langdetect`, a structural limitation rather than a short-text weakness. **Mitigation:** `check_language_contamination` will not use "not detected as Urdu" as its contamination signal, since that would flag the entire dataset as 100% contaminated. Instead, the check will only flag samples confidently (>0.9 probability) identified as a real, unrelated language (e.g. genuine English text mixed into the corpus). `DetectorFactory.seed = 0` will be set at module init to ensure reproducible results, since testing also confirmed detection is non-deterministic without it (2/5 test texts returned different results across repeated runs on identical input before the seed was set).
 
 ---
 
