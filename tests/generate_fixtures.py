@@ -47,30 +47,64 @@ def make_severe_imbalance() -> pd.DataFrame:
 
 # ============================================================
 # near_duplicates fixtures
+#
+# NOTE (Week 3 fix): the original version of these two functions used
+# a numeric template ("unique sample number {i}...") where only a
+# number changed between rows. That template IS a near-duplicate
+# pattern by our own Week 1 definition (minor-addition/variation type)
+# -- so "no_duplicates.csv" wasn't actually duplicate-free, and
+# check_near_duplicates correctly (but confusingly) flagged it as
+# heavily duplicated. Fixed by generating genuinely varied sentence
+# content from combined vocabulary pools instead of one template.
 # ============================================================
 
+_SUBJECTS = ["the weather", "my neighbor", "the football match", "this recipe", "the election results",
+             "a new phone", "the movie plot", "traffic downtown", "the school exam", "my garden",
+             "the stock market", "a wedding", "the internet outage", "local news", "a birthday party",
+             "the airport delay", "a science experiment", "the concert", "a job interview", "the hospital visit",
+             "the university lecture", "a family dinner", "the office meeting", "a road trip", "the art exhibit",
+             "a swimming competition", "the courtroom hearing", "a cooking class", "the museum tour", "a charity event"]
+_VERBS = ["surprised everyone", "changed completely", "was disappointing", "went as expected", "caused chaos",
+          "impressed the crowd", "took longer than planned", "was cancelled suddenly", "improved this year", "confused most people",
+          "exceeded expectations", "fell apart quickly", "sparked a debate", "ran smoothly", "left people speechless"]
+_DETAILS = ["according to reports", "based on what I saw", "much to our surprise", "after several delays",
+            "without any warning", "despite the forecast", "for the third time", "in record time",
+            "against all odds", "as many predicted", "right before sunset", "during the holiday season",
+            "in front of a large crowd", "earlier than scheduled", "for reasons still unclear"]
+_EXTRAS = ["near downtown", "this past weekend", "in a small town", "on live television", "just yesterday",
+           "according to witnesses", "in the northern district", "before the deadline", "under new management", "for the first time"]
+
+
 def make_no_duplicates(n=500) -> pd.DataFrame:
-    """500 unique samples, no pair has Jaccard > 0.5. Expected score: 90-100."""
-    rows = [
-        {"text": f"unique sample number {i} discussing a completely different topic {i*7}",
-         "label": "pos" if i % 2 == 0 else "neg"}
-        for i in range(n)
-    ]
+    """
+    500 genuinely varied samples built from 4 independent slots (not 3)
+    over larger vocabulary pools, to reduce the chance of any two rows
+    accidentally sharing enough substring content to look near-duplicate.
+    Expected score: 90-100.
+    """
+    rows = []
+    used = set()
+    while len(rows) < n:
+        s = (f"{random.choice(_SUBJECTS)} {random.choice(_VERBS)} "
+             f"{random.choice(_DETAILS)} {random.choice(_EXTRAS)}")
+        if s not in used:
+            used.add(s)
+            rows.append({"text": s, "label": "pos" if len(rows) % 2 == 0 else "neg"})
     return pd.DataFrame(rows)
 
 
 def make_with_duplicates() -> pd.DataFrame:
     """
-    500 rows: 50 exact duplicates seeded in, 10 cross-label duplicates.
-    Expected score: 40-65.
+    500 rows: 440 genuinely varied + 50 exact duplicates seeded in +
+    10 cross-label duplicates. Expected score: 40-65 (currently open --
+    see PR discussion; approved formula produces 78.2).
     """
-    base = [{"text": f"unique sample number {i} with some length", "label": "pos"}
-            for i in range(440)]
+    base = make_no_duplicates(n=440)
     duplicates = [{"text": "this is a repeated sample text that appears multiple times",
                    "label": "pos"} for _ in range(50)]
     cross = [{"text": "this specific text has two different labels assigned to it",
               "label": "neg" if i % 2 == 0 else "pos"} for i in range(10)]
-    all_rows = base + duplicates + cross
+    all_rows = base.to_dict("records") + duplicates + cross
     random.shuffle(all_rows)
     return pd.DataFrame(all_rows)
 
@@ -121,7 +155,11 @@ def make_clean_dataset_mv(n=500) -> pd.DataFrame:
 
 
 def make_dirty_dataset_mv(n=500, n_null=25, n_whitespace=15, n_short=20) -> pd.DataFrame:
-    """500 rows: 25 null texts, 15 whitespace-only, 20 very short. Expected score: 30-50."""
+    """
+    500 rows: 25 null texts, 15 whitespace-only, 20 very short.
+    Expected score: 30-50 (currently open -- see PR discussion;
+    approved formula produces 88).
+    """
     n_clean = n - n_null - n_whitespace - n_short
     rows = [{"text": f"Valid sentence number {i} with real content here", "label": "pos"}
             for i in range(n_clean)]
