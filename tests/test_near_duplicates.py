@@ -27,19 +27,12 @@ class TestNearDuplicates:
         noticeably lower than a clean dataset.
 
         NOTE: Role Guide fixture table specifies expected range 40-65 for
-        with_duplicates.csv (50 exact + 10 cross-label duplicates / 500
-        rows = 12% seeded duplication). Our current approved formula
-        (100 x (1 - flagged_row_rate)) produces a score in the high-80s
-        for this fixture (observed 78.2-87.2 across fixture regenerations,
-        since exact score shifts slightly with the random content used
-        for the non-duplicate rows) -- not 40-65. Same pattern as the
-        missing_values discrepancy flagged in Week 2. Flagged to
-        Khadija/director as a combined open question (both checks show
-        the linear formula scoring more leniently than the Role Guide's
-        illustrative ranges expect). Using a loose upper-bound assertion
-        here deliberately -- this test documents that duplicates ARE
-        detected and DO lower the score, not that any specific number is
-        "correct," since the correct number is exactly what's unresolved.
+        with_duplicates.csv. Our current approved formula produces a
+        score in the high-80s -- same open pattern as the missing_values
+        discrepancy flagged in Week 2. Using a loose upper-bound
+        assertion deliberately -- this test documents that duplicates
+        ARE detected and DO lower the score, not that any specific
+        number is "correct," since the correct number is unresolved.
         """
         df = pd.read_csv(FIXTURES / "with_duplicates.csv")
         result = check_near_duplicates(df, text_col="text")
@@ -49,7 +42,7 @@ class TestNearDuplicates:
         )
         assert result.warning is not None
         assert result.details["candidate_pair_count"] > 0
-        assert result.details["flagged_row_count"] >= 50  # the 50 exact duplicates must all be caught
+        assert result.details["flagged_row_count"] >= 50
 
     def test_missing_column_returns_none_score(self):
         """A missing text column must return score=None, never raise."""
@@ -79,24 +72,26 @@ class TestNearDuplicates:
         assert result.score == 0.0
         assert result.details["flagged_row_count"] == 20
 
-    def test_short_text_does_not_produce_false_positives(self):
+    def test_all_rows_too_short_returns_none_score(self):
         """
-        Regression test for a real bug found during Week 3 development:
-        text shorter than 3 characters produces zero 3-grams, so
-        MinHash.update() is never called and the signature stays at its
-        default state -- meaning any two short texts would trivially
-        match each other regardless of actual content ("hi" and "no"
-        were incorrectly flagged as duplicates before this fix). Short
-        rows must be excluded from comparison, not silently mismatched.
+        Regression test for a bug found by Khadija during PR review:
+        when EVERY row is too short to build a comparable signature,
+        the check must return score=None (nothing could be measured),
+        NOT score=100.0 (which would silently misreport "perfectly
+        clean" when nothing was actually compared). This is the same
+        underlying situation as the single-row case, just reached via
+        filtering instead of raw row count -- both must behave the
+        same way.
+
+        Exact case from Khadija's review: ["hi","ok","no","hi","ok"].
         """
-        df = pd.DataFrame({"text": ["hi", "ok", "no", "yo", "go"]})
+        df = pd.DataFrame({"text": ["hi", "ok", "no", "hi", "ok"]})
         result = check_near_duplicates(df, text_col="text")
-        assert result.score == 100.0, (
-            f"Expected score 100 (all rows too short to compare, none "
-            f"should falsely match), got {result.score}"
+        assert result.score is None, (
+            f"Expected score=None (all 5 rows too short to compare), got {result.score}"
         )
+        assert "too short to compare" in result.warning.lower()
         assert result.details["skipped_short_count"] == 5
-        assert result.details["candidate_pair_count"] == 0
 
     def test_mixed_short_and_real_duplicates(self):
         """Short text is skipped; real duplicates among normal-length text are still caught."""
@@ -109,6 +104,7 @@ class TestNearDuplicates:
             ]
         })
         result = check_near_duplicates(df, text_col="text")
+        assert result.score is not None  # NOT all rows were too short here
         assert result.details["skipped_short_count"] == 2
         assert result.details["flagged_row_count"] == 2
         assert result.details["candidate_pair_count"] == 1
