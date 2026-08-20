@@ -1,0 +1,202 @@
+{# Structure only for now -- charts are added in Week 5 once real check
+   data (from the Integration/Evaluation side) is available to design
+   against. All CSS is embedded here, not linked externally, per the
+   design doc's self-contained-HTML requirement. #}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>inference-audit Report — {{ dataset_path }}</title>
+    <style>
+        body {
+            font-family: -apple-system, Segoe UI, Roboto, sans-serif;
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 0 20px;
+            color: #1a1a1a;
+            background-color: #ffffff;
+        }
+
+        header {
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 16px;
+            margin-bottom: 24px;
+        }
+
+        header h1 {
+            margin-bottom: 4px;
+            font-size: 1.6em;
+        }
+
+        .meta {
+            color: #666666;
+            font-size: 0.9em;
+        }
+
+        .overall-score {
+            display: inline-block;
+            font-size: 2.5em;
+            font-weight: bold;
+            padding: 12px 28px;
+            border-radius: 8px;
+            margin: 16px 0;
+        }
+
+        .score-good { background-color: #e6f4ea; color: #1e7e34; }
+        .score-warn { background-color: #fff8e1; color: #b8860b; }
+        .score-bad  { background-color: #fdecea; color: #c0392b; }
+        .score-none { background-color: #f0f0f0; color: #666666; }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0 32px 0;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 10px 12px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        th {
+            background-color: #fafafa;
+            font-weight: 600;
+        }
+
+        .check-name {
+            font-weight: 600;
+            text-transform: capitalize;
+        }
+
+        .score-cell {
+            font-weight: bold;
+        }
+
+        .warning-text {
+            color: #b8860b;
+            font-size: 0.9em;
+        }
+
+        .skipped-text {
+            color: #999999;
+            font-style: italic;
+            font-size: 0.9em;
+        }
+
+        .details-block {
+            font-size: 0.85em;
+            color: #555555;
+            background-color: #fafafa;
+            padding: 10px 12px;
+            border-radius: 4px;
+            margin-top: 4px;
+        }
+
+        .chart-placeholder {
+            border: 1px dashed #cccccc;
+            border-radius: 6px;
+            padding: 24px;
+            text-align: center;
+            color: #999999;
+            margin: 12px 0;
+        }
+
+        footer {
+            margin-top: 40px;
+            padding-top: 16px;
+            border-top: 1px solid #e0e0e0;
+            font-size: 0.8em;
+            color: #999999;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>inference-audit Report</h1>
+        <div class="meta">
+            Dataset: {{ dataset_path }} &nbsp;·&nbsp;
+            {{ rows }} rows &nbsp;·&nbsp;
+            Generated {{ timestamp }} &nbsp;·&nbsp;
+            v{{ audit_version }}
+        </div>
+    </header>
+
+    <section>
+        {% if overall_score is not none %}
+            {% if overall_score >= 80 %}
+                <div class="overall-score score-good">{{ overall_score }}</div>
+            {% elif overall_score >= 50 %}
+                <div class="overall-score score-warn">{{ overall_score }}</div>
+            {% else %}
+                <div class="overall-score score-bad">{{ overall_score }}</div>
+            {% endif %}
+        {% else %}
+            <div class="overall-score score-none">N/A</div>
+        {% endif %}
+        <p>Overall Score (weighted average across all checks)</p>
+    </section>
+
+    <section>
+        <h2>Check Results</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Check</th>
+                    <th>Score</th>
+                    <th>Notes</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for name, result in checks.items() %}
+                <tr>
+                    <td class="check-name">{{ name.replace('_', ' ') }}</td>
+                    <td class="score-cell">
+                        {% if result.score is not none %}
+                            {{ result.score }}
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if result.score is none %}
+                            <span class="skipped-text">Skipped — {{ result.warning }}</span>
+                        {% elif result.warning %}
+                            <span class="warning-text">{{ result.warning }}</span>
+                        {% else %}
+                            No issues found
+                        {% endif %}
+                    </td>
+                </tr>
+                {% if result.details %}
+                <tr>
+                    <td></td>
+                    <td colspan="2">
+                        <div class="details-block">
+                            {% for key, value in result.details.items() %}
+                                {{ key.replace('_', ' ') }}: {{ value }}{% if not loop.last %} &nbsp;·&nbsp; {% endif %}
+                            {% endfor %}
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <section>
+        <h2>Charts</h2>
+        {# Placeholder -- replaced with embedded base64 PNG charts in Week 5
+           once report_renderer.py generates real matplotlib figures. #}
+        <div class="chart-placeholder">Charts will appear here (added in Week 5)</div>
+    </section>
+
+    <footer>
+        Generated by inference-audit v{{ audit_version }} · Column mapping:
+        label_col="{{ label_col }}", text_col="{{ text_col }}"
+    </footer>
+
+</body>
+</html>

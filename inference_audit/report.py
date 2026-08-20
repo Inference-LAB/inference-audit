@@ -154,7 +154,7 @@ class AuditReport:
         The actual rendering lives in report_renderer.py. It's
         imported here, inside the method, rather than at the top of
         this file, because report_renderer.py imports AuditReport from
-        this file — importing it at the top would create a circular
+        this file importing it at the top would create a circular
         import (this file waiting on a file that's waiting on this
         file).
         """
@@ -168,19 +168,25 @@ class AuditReport:
                 f"Check that the folder exists and is writable."
             ) from e
 
+from importlib.metadata import packages_distributions, version, PackageNotFoundError
 
 def _get_audit_version() -> str:
     """
-    Reads the installed package version.
-
-    Falls back to "dev" instead of crashing when the package hasn't
-    been installed yet (e.g. running straight from a cloned repo
-    during development, before `pip install -e .` has been run).
-    Note: the name passed here must match whatever distribution name
-    ends up in pyproject.toml — not necessarily "inference-audit",
-    since that name is already taken on PyPI.
+    Reads the installed package version by looking up whatever
+    distribution name currently provides the `inference_audit` import
+    package -- rather than hardcoding a specific PyPI name. This means
+    the code doesn't need to change if the PyPI distribution name is
+    ever renamed (e.g. once the naming conflict is resolved).
     """
     try:
-        return version("inference-audit")
+        distributions = packages_distributions().get("inference_audit", [])
+        if distributions:
+            return version(distributions[0])
+    except AttributeError:
+        # packages_distributions() was added in Python 3.10 -- on 3.9,
+        # this attribute won't exist. Fall through to "dev".
+        pass
     except PackageNotFoundError:
-        return "dev"
+        pass
+
+    return "dev"
