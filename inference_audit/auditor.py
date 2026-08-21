@@ -1,6 +1,7 @@
 """Auditor: orchestrates dataset loading and runs all quality checks."""
 
 import datetime
+from typing import Optional
 
 from inference_audit.loader import load_dataset
 from inference_audit.report import AuditReport, _get_audit_version
@@ -19,7 +20,7 @@ class Auditor:
         path: str,
         label_col: str,
         text_col: str,
-        conf_col: str = None,
+        conf_col: Optional[str] = None,
         language: str = "auto",
     ) -> AuditReport:
         """Loads the dataset, runs all five checks, and returns an AuditReport.
