@@ -1,13 +1,15 @@
 """Auditor: orchestrates dataset loading and runs all quality checks."""
 
 import datetime
-from typing import Optional
 
 from inference_audit.loader import load_dataset
 from inference_audit.report import AuditReport, _get_audit_version
 from inference_audit.checks.label_distribution import check_label_distribution
 from inference_audit.checks.near_duplicates import check_near_duplicates
-from inference_audit.checks.language_contamination import check_language_contamination
+from inference_audit.checks.language_contamination import (
+    check_language_contamination,
+    DEFAULT_CONCERN_LANGUAGES,
+)
 from inference_audit.checks.missing_values import check_missing_values
 from inference_audit.checks.annotation_consistency import check_annotation_consistency
 
@@ -20,8 +22,8 @@ class Auditor:
         path: str,
         label_col: str,
         text_col: str,
-        conf_col: Optional[str] = None,
-        language: str = "auto",
+        conf_col: str = None,
+        concern_languages=None,
     ) -> AuditReport:
         """Loads the dataset, runs all five checks, and returns an AuditReport.
 
@@ -30,7 +32,12 @@ class Auditor:
             label_col: Name of the label column.
             text_col: Name of the text column.
             conf_col: Optional confidence column for annotation_consistency.
-            language: Expected language code, or "auto".
+            concern_languages: Optional iterable of ISO 639-1 language codes
+                to flag if confidently detected in language_contamination.
+                Defaults to ("en", "hi") if not provided -- see
+                check_language_contamination's docstring. Override this for
+                datasets where the realistic contamination risk is a
+                different language pair.
 
         Returns:
             A fully populated AuditReport.
@@ -45,7 +52,9 @@ class Auditor:
             "label_distribution": check_label_distribution(df, label_col),
             "near_duplicates": check_near_duplicates(df, text_col),
             "language_contamination": check_language_contamination(
-                df, text_col, language
+                df,
+                text_col,
+                concern_languages=concern_languages or DEFAULT_CONCERN_LANGUAGES,
             ),
             "missing_values": check_missing_values(df, text_col),
             "annotation_consistency": check_annotation_consistency(
