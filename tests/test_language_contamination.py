@@ -12,77 +12,75 @@ FIXTURES = Path("tests/fixtures")
 
 
 class TestLanguageContamination:
-    def test_specific_language_clean_english_scores_perfect(self):
+    def test_default_concern_languages_flags_real_english_contamination(self):
         """
-        SPECIFIC LANGUAGE mode is the reliable mode -- langdetect has a
-        real profile for English. A genuinely clean English dataset
-        must score exactly 100.
+        concern_languages=["fr"] against an English dataset with real
+        French contamination must correctly identify it -- this is the
+        same guarantee the old "specific language" mode provided,
+        preserved under the new API.
         """
-        df = pd.DataFrame({
-            "text": [
-                "This is a normal English sentence.",
-                "Another perfectly fine English sentence here.",
-                "The weather today is quite pleasant.",
-            ] * 10
-        })
-        result = check_language_contamination(df, text_col="text", expected_language="en")
-        assert result.score == 100.0
-        assert result.warning is None
-
-    def test_specific_language_catches_real_contamination(self):
-        """SPECIFIC LANGUAGE mode must correctly catch genuine foreign-language contamination."""
         texts = ["This is a normal English sentence about daily life."] * 8 + \
-                ["Ceci est une phrase française tout à fait normale."] * 2
+                ["Ceci est une phrase française tout a fait normale."] * 2
         df = pd.DataFrame({"text": texts})
-        result = check_language_contamination(df, text_col="text", expected_language="en")
+        result = check_language_contamination(df, text_col="text", concern_languages=["fr"])
         assert result.score == 80.0
         assert result.details["contamination_count"] == 2
-        assert result.details["baseline_language"] == "en"
 
-    def test_auto_mode_roman_urdu_documented_limitation(self):
+    def test_stability_across_dataset_size(self):
         """
-        AUTO mode on Roman Urdu is a BEST-EFFORT HEURISTIC, not a
-        reliable measurement -- confirmed via live testing that
-        langdetect's confidence output cannot cleanly separate genuine
-        Roman Urdu noise from real contamination (wrongly-flagged clean
-        samples sit at ~0.9999 confidence, indistinguishable by
-        threshold from true contamination).
+        Regression test for the Lead Engineer's core Week 4 finding:
+        the OLD majority-vote "auto" mode produced wildly different
+        scores depending on dataset size (10% on a small sample, 28.9%
+        on the real 134K-row corpus) because the baseline itself was
+        computed from noisy data. The NEW concern-list approach must
+        produce a STABLE score regardless of sample size, since it
+        checks against a fixed list, not a data-derived baseline.
+        """
+        df_small = pd.read_csv(FIXTURES / "clean_urdu.csv")  # 500 rows
+        result_small = check_language_contamination(df_small, text_col="text")
 
-        Role Guide fixture table expects 90-100 for clean_urdu.csv;
-        measured actual behavior is high-80s (88.4 observed). This is
-        NOT a formula-tuning issue like the missing_values/near_duplicates
-        discrepancies -- it's a structural limitation of langdetect
-        itself (see Week 1 Task 2 findings, Known Risk #3). No amount
-        of threshold adjustment closes this gap. Flagged to the team
-        as a distinct, third type of open question.
+        # A much larger, independently-generated sample of the same
+        # underlying clean Roman Urdu content.
+        import random
+        random.seed(99)
+        samples = ["yeh bohat acha din tha aj", "mera dil khush hai", "kya haal hai bhai",
+                   "bohat mazedar khana tha", "yeh drama bilkul boring hai", "aj mausam acha hai",
+                   "mujhe yeh pasand nahi aya", "sab theek hai alhamdulillah"]
+        df_large = pd.DataFrame({"text": [f"{random.choice(samples)} number {i}" for i in range(5000)]})
+        result_large = check_language_contamination(df_large, text_col="text")
 
-        This test documents realistic achieved behavior, not the
-        Role Guide's aspirational range, since forcing the fixture to
-        pass would misrepresent a genuine tool limitation as solved.
+        # Should be close (within a few points), NOT a 3x swing like
+        # the old majority-vote approach exhibited.
+        assert abs(result_small.score - result_large.score) < 5, (
+            f"Expected stable score across dataset sizes, got {result_small.score} "
+            f"(500 rows) vs {result_large.score} (5000 rows) -- difference too large, "
+            f"suggests instability has crept back in."
+        )
+
+    def test_known_bounded_false_positive_rate_on_clean_roman_urdu(self):
+        """
+        DOCUMENTED, KNOWN LIMITATION (not a bug): genuine Roman Urdu
+        text can still be confidently misdetected as English at a real,
+        measured rate (~11-12%). This test documents that the rate is
+        BOUNDED and roughly consistent, not that it is zero -- a
+        perfect score here would indicate the test fixture changed in
+        a way that hides this real, understood limitation rather than
+        the limitation being solved.
         """
         df = pd.read_csv(FIXTURES / "clean_urdu.csv")
-        result = check_language_contamination(df, text_col="text", expected_language="auto")
-        assert result.score is not None
-        assert result.score >= 80, (
-            f"Expected score >= 80 (best-effort heuristic, not perfect) for clean "
-            f"Roman Urdu, got {result.score}. Details: {result.details}"
+        result = check_language_contamination(df, text_col="text")
+        assert 80 <= result.score <= 95, (
+            f"Expected score in the known bounded range 80-95 for clean Roman Urdu "
+            f"(reflecting the documented ~11-12% false-positive rate), got {result.score}"
         )
-        assert "best-effort heuristic" in result.warning.lower()
 
-    def test_auto_mode_contaminated_scores_lower_than_clean(self):
-        """
-        Even though auto mode doesn't hit the Role Guide's exact range,
-        it must still meaningfully distinguish contaminated from clean
-        data -- contaminated.csv must score lower than clean_urdu.csv.
-        """
+    def test_contaminated_dataset_scores_lower_than_clean(self):
+        """A dataset with real seeded English contamination must score meaningfully lower than clean."""
         df_clean = pd.read_csv(FIXTURES / "clean_urdu.csv")
         df_contaminated = pd.read_csv(FIXTURES / "contaminated.csv")
-        result_clean = check_language_contamination(df_clean, text_col="text", expected_language="auto")
-        result_contaminated = check_language_contamination(df_contaminated, text_col="text", expected_language="auto")
-        assert result_contaminated.score < result_clean.score, (
-            f"Expected contaminated ({result_contaminated.score}) < clean "
-            f"({result_clean.score})"
-        )
+        result_clean = check_language_contamination(df_clean, text_col="text")
+        result_contaminated = check_language_contamination(df_contaminated, text_col="text")
+        assert result_contaminated.score < result_clean.score
 
     def test_missing_column_returns_none_score(self):
         """A missing text column must return score=None, never raise."""
@@ -104,30 +102,29 @@ class TestLanguageContamination:
         assert result.score is None
         assert "confidence_threshold" in result.warning
 
+    def test_empty_concern_languages_returns_none(self):
+        """An empty concern_languages list has nothing to check against -- must reject, not silently pass everything."""
+        result = check_language_contamination(
+            pd.DataFrame({"text": ["hello world"]}), text_col="text", concern_languages=[]
+        )
+        assert result.score is None
+        assert "concern_languages" in result.warning
+
     def test_all_text_undetectable_returns_none(self):
-        """
-        langdetect raises on empty/whitespace/numeric-only text.
-        A dataset where every row is undetectable must return
-        score=None, never crash.
-        """
+        """langdetect raises on empty/whitespace/numeric-only text -- must not crash."""
         df = pd.DataFrame({"text": ["", "   ", "123", None]})
         result = check_language_contamination(df, text_col="text")
         assert result.score is None
         assert result.details["skipped_undetectable_count"] == 4
 
-    def test_mixed_detectable_and_undetectable_text(self):
+    def test_deduplication_reduces_unique_text_count_reported(self):
         """
-        Undetectable rows (empty/short/numeric) are skipped and
-        reported separately, not treated as clean or contaminated;
-        detectable rows are still checked normally.
+        Performance fix verification: details must report unique_text_count
+        separately from total_rows, confirming the dedup optimization is
+        active (per Lead Engineer's performance finding on the 134K-row
+        corpus with heavy short-message repetition).
         """
-        df = pd.DataFrame({
-            "text": [
-                "", "This is a normal English sentence about life.",
-                "123", "Another fine English sentence here today.",
-            ]
-        })
-        result = check_language_contamination(df, text_col="text", expected_language="en")
-        assert result.details["skipped_undetectable_count"] == 2
-        assert result.details["detectable_count"] == 2
-        assert result.score == 100.0
+        df = pd.DataFrame({"text": ["repeated message here"] * 100})
+        result = check_language_contamination(df, text_col="text")
+        assert result.details["total_rows"] == 100
+        assert result.details["unique_text_count"] == 1
