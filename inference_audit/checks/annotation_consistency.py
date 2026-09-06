@@ -2,47 +2,42 @@
 inference_audit/checks/annotation_consistency.py
 
 Flags low-confidence annotations that indicate genuine annotator
-disagreement. Per the design doc's Public API: conf_col is optional --
-if not provided, this check returns score=None with a clear explanation
-rather than failing, since not every dataset has a confidence column.
+disagreement. conf_col is optional -- if not provided, this check
+returns score=None with a clear explanation rather than failing.
 """
 
 import pandas as pd
 from inference_audit.report import CheckResult
+from inference_audit.config import ANNOTATION_CONFIDENCE_THRESHOLD, validate_probability_threshold
 
 
 def check_annotation_consistency(
     df: pd.DataFrame,
     conf_col: str = None,
-    confidence_threshold: float = 0.6,
+    confidence_threshold: float = ANNOTATION_CONFIDENCE_THRESHOLD,
 ) -> CheckResult:
     """
     Flags samples with annotation confidence below a threshold.
 
     Args:
         df:                     The dataset as a pandas DataFrame.
-        conf_col:               Name of the confidence column. If None
-                                 (not provided), this check is skipped
-                                 gracefully -- not every dataset has one.
+        conf_col:               Name of the confidence column. If None,
+                                 this check is skipped gracefully.
         confidence_threshold:   Confidence below this value is flagged
                                  as low-confidence. Must be in [0, 1].
-                                 Default 0.6.
-
-    Returns:
-        CheckResult with score (0-100), warning (str or None), and
-        details (dict with low-confidence count, null count in the
-        confidence column, and the threshold used).
+                                 Default from config.py
+                                 (ANNOTATION_CONFIDENCE_THRESHOLD) --
+                                 moved there per review, so it's tunable
+                                 without touching check logic and stays
+                                 consistent with how other checks
+                                 configure tunables.
 
     Never raises. Returns CheckResult(score=None, ...) for: no conf_col
-    provided (expected, normal case -- not an error), missing column,
-    empty dataframe, invalid threshold, non-numeric confidence values,
-    or all confidence values being null.
+    provided, missing column, empty dataframe, invalid threshold,
+    non-numeric confidence values, or all confidence values being null.
     """
     total_rows = len(df)
 
-    # No confidence column provided is the EXPECTED, normal case for
-    # many datasets -- per design doc's Public API, this is a graceful
-    # skip, not an error condition.
     if conf_col is None:
         return CheckResult(
             score=None,
@@ -50,10 +45,6 @@ def check_annotation_consistency(
             details={"error": "no_confidence_column"},
         )
 
-    # Defense-in-depth only: primary column validation happens once,
-    # centrally, in loader.py before any check runs. This guard exists
-    # so the check still honors its "never raises" contract if ever
-    # called directly, not as the main validation path.
     if conf_col not in df.columns:
         return CheckResult(
             score=None,
@@ -68,21 +59,16 @@ def check_annotation_consistency(
             details={"error": "empty_dataframe"},
         )
 
-    # Validate threshold explicitly -- same discipline the director
-    # asked for on label_distribution's max_acceptable_ratio. A
-    # confidence threshold outside [0, 1] is meaningless, since
-    # confidence values themselves are expected in that range.
-    if not (0.0 <= confidence_threshold <= 1.0):
+    # Centralized validation, per review -- was previously duplicated
+    # inline in every check that takes a [0,1]-bounded threshold.
+    validation_error = validate_probability_threshold("confidence_threshold", confidence_threshold)
+    if validation_error:
         return CheckResult(
             score=None,
-            warning=f"confidence_threshold must be between 0 and 1 (got {confidence_threshold}).",
+            warning=validation_error,
             details={"error": "invalid_confidence_threshold", "confidence_threshold": confidence_threshold},
         )
 
-    # Applying the same null-handling discipline the director's review
-    # required for label_distribution: null confidence values are
-    # computed and reported explicitly, never silently dropped from the
-    # denominator without a trace.
     is_null = df[conf_col].isna()
     null_count = int(is_null.sum())
     non_null_values = df[conf_col].dropna()
@@ -94,9 +80,6 @@ def check_annotation_consistency(
             details={"error": "all_confidence_null", "null_count": null_count, "total_rows": total_rows},
         )
 
-    # Applying the same non-numeric-value discipline the director's
-    # review required for missing_values: a confidence column should
-    # contain numeric values, not silently coerced strings/objects.
     is_numeric_mask = non_null_values.apply(lambda v: isinstance(v, (int, float)) and not isinstance(v, bool))
     non_numeric_count = int((~is_numeric_mask).sum())
     if non_numeric_count > 0:
@@ -113,10 +96,6 @@ def check_annotation_consistency(
     is_low_confidence = non_null_values < confidence_threshold
     low_confidence_count = int(is_low_confidence.sum())
 
-    # Score formula, per design doc: 100 x (1 - low_confidence_rate).
-    # Rate is computed over non-null values only -- nulls are reported
-    # separately (see warning/details below), not silently folded into
-    # either the numerator or denominator.
     low_confidence_rate = low_confidence_count / non_null_count
     score = round(100 * (1 - low_confidence_rate), 2)
 
