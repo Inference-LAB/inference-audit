@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "inference-audit-pk"
+version = "0.1.0"
+description = "NLP dataset quality auditor: label distribution, near-duplicates, language contamination, missing values, and annotation consistency checks in one command."
+readme = "README.md"
+requires-python = ">=3.9"
+license = {file = "LICENSE"}
+authors = [
+    {name = "Khadija Faisal"},
+    {name = "Muhammad Shoaib Altaf"},
+]
+keywords = ["nlp", "dataset", "data-quality", "audit", "machine-learning"]
+dependencies = [
+    "pandas>=2.0",
+    "jinja2>=3.0",
+    "matplotlib>=3.5",
+    "datasketch>=1.5",
+    "langdetect>=1.0",
+    "typer>=0.9",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.urls]
+Repository = "https://github.com/Inference-LAB/inference-audit"
+Issues = "https://github.com/Inference-LAB/inference-audit/issues"
+
+[project.scripts]
+inference-audit = "inference_audit.cli:app"
+
+[tool.setuptools.packages.find]
+include = ["inference_audit*"]
+
+[tool.setuptools.package-data]
+inference_audit = ["templates/*.j2"]
