@@ -1,5 +1,6 @@
 """Command-line interface for inference-audit."""
 
+import re
 from pathlib import Path
 
 import typer
@@ -7,6 +8,9 @@ import typer
 from inference_audit.auditor import Auditor
 
 app = typer.Typer(help="inference-audit: NLP dataset quality auditor.")
+
+SUPPORTED_OUTPUT_FORMATS = {".html", ".json"}
+_ISO_639_1_PATTERN = re.compile(r"^[a-z]{2}$")
 
 
 @app.callback()
@@ -37,7 +41,7 @@ def run(
     output: str = typer.Option(
         "audit_report.html",
         "--output",
-        help="Output file path. Format inferred from extension (.html or .json).",
+        help="Output file path. Must end in .html or .json.",
     ),
     conf_col: str = typer.Option(
         None, "--conf-col", help="Optional confidence/agreement column."
@@ -55,23 +59,52 @@ def run(
     fail_below: int = typer.Option(
         None,
         "--fail-below",
-        help="Exit with code 1 if overall_score falls below this value.",
+        help="Exit with code 1 if overall_score falls below this value (0-100).",
     ),
 ):
     """Run a full quality audit on a dataset and write a report."""
-    auditor = Auditor()
+    # --- Validate --output extension up front, before any audit runs ---
+    output_path = Path(output)
+    output_suffix = output_path.suffix.lower()
+    if output_suffix not in SUPPORTED_OUTPUT_FORMATS:
+        typer.echo(
+            f"Error: --output must end in one of {sorted(SUPPORTED_OUTPUT_FORMATS)} "
+            f"(got '{output}').",
+            err=True,
+        )
+        raise typer.Exit(code=1)
 
+    # --- Validate --fail-below range up front ---
+    if fail_below is not None and not (0 <= fail_below <= 100):
+        typer.echo(
+            f"Error: --fail-below must be between 0 and 100 (got {fail_below}).",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    # --- Parse and validate --concern-languages up front ---
     parsed_concern_languages = None
     if concern_languages is not None:
-        parsed_concern_languages = tuple(
-            code.strip() for code in concern_languages.split(",") if code.strip()
-        )
-        if not parsed_concern_languages:
+        codes = [code.strip().lower() for code in concern_languages.split(",") if code.strip()]
+        if not codes:
             typer.echo(
                 "Error: --concern-languages was given but contained no valid codes.",
                 err=True,
             )
             raise typer.Exit(code=1)
+
+        invalid_codes = [c for c in codes if not _ISO_639_1_PATTERN.match(c)]
+        if invalid_codes:
+            typer.echo(
+                f"Error: invalid language code(s) in --concern-languages: "
+                f"{invalid_codes}. Expected two-letter ISO 639-1 codes (e.g. 'en', 'hi').",
+                err=True,
+            )
+            raise typer.Exit(code=1)
+
+        parsed_concern_languages = tuple(codes)
+
+    auditor = Auditor()
 
     try:
         report = auditor.audit(
@@ -84,9 +117,15 @@ def run(
     except (FileNotFoundError, ValueError) as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1)
+    except Exception as e:  # pylint: disable=broad-except
+        # Boundary of last resort: an unexpected failure inside a check
+        # or the report/render pipeline should not dump a raw traceback
+        # at CLI users. Anything expected (bad input, bad format) is
+        # already caught above as FileNotFoundError/ValueError.
+        typer.echo(f"Unexpected error while running the audit: {e}", err=True)
+        raise typer.Exit(code=1)
 
-    output_path = Path(output)
-    if output_path.suffix.lower() == ".json":
+    if output_suffix == ".json":
         report.to_json(output)
     else:
         report.save(output)
