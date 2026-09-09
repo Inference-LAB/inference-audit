@@ -1,4 +1,5 @@
-{# Structure only for now -- charts are added in Week 5 once real check
+{# inference_audit/templates/report.html.j2
+   Structure only for now -- charts are added in Week 5 once real check
    data (from the Integration/Evaluation side) is available to design
    against. All CSS is embedded here, not linked externally, per the
    design doc's self-contained-HTML requirement. #}
@@ -187,10 +188,14 @@
     </section>
 
     <section>
-        <h2>Charts</h2>
-        {# Placeholder -- replaced with embedded base64 PNG charts in Week 5
-           once report_renderer.py generates real matplotlib figures. #}
-        <div class="chart-placeholder">Charts will appear here (added in Week 5)</div>
+        <h2>Score Overview</h2>
+        {% if chart_image_base64 %}
+        <img src="data:image/png;base64,{{ chart_image_base64 }}"
+             alt="Bar chart of per-check scores"
+             style="max-width: 100%; height: auto;">
+        {% else %}
+        <div class="chart-placeholder">Chart not available</div>
+        {% endif %}
     </section>
 
     <footer>
