@@ -93,7 +93,7 @@ missing_values:           88
 annotation_consistency:   skipped (no confidence column provided)
 ```
 
-See `sample_report.html` in this repository for a full rendered example, including the score chart.
+See `report.html` in this repository for a full rendered example, including the score chart.
 
 ## Requirements
 
