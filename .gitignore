@@ -3,3 +3,7 @@ __pycache__/
 .vscode/
 
 venv/
+
+htmlcov/
+coverage_report.xml
+.coverage
