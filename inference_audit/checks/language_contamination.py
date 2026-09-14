@@ -8,7 +8,27 @@ per Lead Engineer review -- see git history for the prior approach and
 why it was abandoned: majority-vote over langdetect's essentially
 random guessing for Roman Urdu produced an unstable, uninterpretable
 score that swung 3x depending on dataset composition/size).
+
+PERFORMANCE (Week 5, Lead Engineer): unique-text caching alone (already
+in place since Week 4) wasn't sufficient on the real 134K-row RUEmoCorp
+corpus (~20 minutes), because most real rows are genuinely unique text
+-- the cache has little duplication to exploit on this specific
+dataset. Added: parallel detection across unique texts using a process
+pool, since each text's detection has no dependency on any other.
+Parameters and output shape are unchanged. Verified via
+tests/test_performance_regression.py against the pre-parallel
+implementation on all existing fixtures, including a determinism check
+confirming the parallel path still produces identical results across
+repeated runs.
+
+IMPORTANT: DetectorFactory.seed is process-global state, not shared
+across process boundaries -- each worker process must set it
+independently (see _init_worker below), or the reproducibility fix
+from Week 1 is silently lost in the parallel path.
 """
+
+import os
+from concurrent.futures import ProcessPoolExecutor
 
 import pandas as pd
 from langdetect import detect_langs, DetectorFactory
@@ -21,6 +41,31 @@ from inference_audit.config import (
 )
 
 DetectorFactory.seed = 0
+
+# Below this many unique texts, process-pool startup overhead costs
+# more than it saves (relevant for small test fixtures, which have
+# far fewer than this many unique rows) -- run sequentially instead.
+# Only real, large datasets benefit from parallelizing.
+_PARALLEL_THRESHOLD = 200
+
+
+def _init_worker():
+    """Runs once per worker process on startup. Each worker needs the
+    seed set independently -- it does not inherit the parent process's
+    DetectorFactory state, since worker processes don't share memory
+    with the parent."""
+    DetectorFactory.seed = 0
+
+
+def _detect_one(text: str):
+    """Runs detect_langs() on a single text. Must be a module-level
+    function (not a closure/lambda) so it can be pickled and sent to
+    worker processes."""
+    try:
+        langs = detect_langs(text)
+        return (langs[0].lang, langs[0].prob)
+    except LangDetectException:
+        return None
 
 
 def check_language_contamination(
@@ -38,27 +83,17 @@ def check_language_contamination(
         concern_languages:      Iterable of ISO 639-1 codes to treat as
                                  contamination risks if confidently
                                  detected. Default from config.py
-                                 (LANGUAGE_CONCERN_LANGUAGES) -- see
-                                 that module for the documented rationale
-                                 (English/Hindi as realistic risks for a
-                                 Roman Urdu corpus). Moved to config per
-                                 review, so this can be tuned per-dataset
-                                 without touching check logic.
+                                 (LANGUAGE_CONCERN_LANGUAGES).
         confidence_threshold:   Minimum langdetect confidence to trust a
                                  detection. Must be in [0, 1]. Default
                                  from config.py (LANGUAGE_CONFIDENCE_THRESHOLD).
                                  BOUNDARY: a detection with confidence
                                  EXACTLY equal to this threshold DOES
-                                 count as a match (>=, inclusive) -- made
-                                 explicit per review; see test suite for
-                                 a boundary-value test confirming this.
+                                 count as a match (>=, inclusive).
 
     KNOWN, BOUNDED LIMITATION: genuine Roman Urdu text can still be
     confidently misdetected specifically as English at a measured rate
-    (~11-12% on test data) -- see tests/test_language_contamination.py
-    for the documented baseline and tolerance around this figure. This
-    is a real characteristic of langdetect's behavior on Roman Urdu,
-    not something this check can fully eliminate.
+    (~11-12% on test data) -- see tests/test_language_contamination.py.
 
     Never raises. Returns CheckResult(score=None, ...) for: missing
     column, empty dataframe, invalid confidence_threshold, empty
@@ -96,10 +131,9 @@ def check_language_contamination(
         )
 
     # Performance: avoid the astype(str) copy when the column is
-    # already string-typed (per review -- "if this shows up in
-    # profiling"). Falls back to the safe full-cast path if a non-string
-    # value slips through an object-dtype column, rather than risking
-    # an AttributeError deep in detect_langs().
+    # already string-typed. Falls back to the safe full-cast path if a
+    # non-string value slips through an object-dtype column, rather
+    # than risking an AttributeError deep in detect_langs().
     if df[text_col].dtype == object:
         texts = df[text_col].fillna("")
         try:
@@ -109,14 +143,22 @@ def check_language_contamination(
     else:
         texts = df[text_col].fillna("").astype(str)
 
-    detection_cache = {}
-    unique_texts = texts.unique()
-    for text in unique_texts:
-        try:
-            langs = detect_langs(text)
-            detection_cache[text] = (langs[0].lang, langs[0].prob)
-        except LangDetectException:
-            detection_cache[text] = None
+    # --- Improvement 1: run detect_langs() once per UNIQUE text, not
+    # once per row. Rows sharing exact text reuse the same result. ---
+    unique_texts = texts.unique().tolist()
+
+    # --- Improvement 2: run those per-unique-text detections in
+    # parallel across CPU cores when there are enough of them to make
+    # the process-pool overhead worthwhile. Each detection is fully
+    # independent of every other, so this is embarrassingly parallel. ---
+    if len(unique_texts) >= _PARALLEL_THRESHOLD:
+        max_workers = min(32, (os.cpu_count() or 4))
+        with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker) as executor:
+            results = list(executor.map(_detect_one, unique_texts, chunksize=200))
+    else:
+        results = [_detect_one(t) for t in unique_texts]
+
+    detection_cache = dict(zip(unique_texts, results))
 
     skipped_undetectable_count = 0
     contamination_count = 0
@@ -129,9 +171,8 @@ def check_language_contamination(
             continue
         detectable_count += 1
         lang, prob = result
-        # BOUNDARY (made explicit per review): >= , not > -- a
-        # detection exactly at the configured threshold counts as a
-        # confident match. See test suite for a boundary-value test.
+        # BOUNDARY: >= , not > -- a detection exactly at the configured
+        # threshold counts as a confident match.
         if lang in concern_set and prob >= confidence_threshold:
             contamination_count += 1
 

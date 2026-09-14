@@ -168,25 +168,27 @@ class AuditReport:
                 f"Check that the folder exists and is writable."
             ) from e
 
-from importlib.metadata import packages_distributions, version, PackageNotFoundError
+from importlib.metadata import version, PackageNotFoundError
+
+try:
+    from importlib.metadata import packages_distributions
+except ImportError:
+    # packages_distributions() was added in Python 3.10 -- on 3.9 it
+    # doesn't exist in importlib.metadata at all, so the import itself
+    # fails, not just a call to the function. Handling this at import
+    # time (not inside a try/except around the function call) is what
+    # actually matters here -- a try/except around the call never gets
+    # reached if the module-level import already crashed.
+    packages_distributions = None
+
 
 def _get_audit_version() -> str:
-    """
-    Reads the installed package version by looking up whatever
-    distribution name currently provides the `inference_audit` import
-    package -- rather than hardcoding a specific PyPI name. This means
-    the code doesn't need to change if the PyPI distribution name is
-    ever renamed (e.g. once the naming conflict is resolved).
-    """
+    if packages_distributions is None:
+        return "dev"
     try:
         distributions = packages_distributions().get("inference_audit", [])
         if distributions:
             return version(distributions[0])
-    except AttributeError:
-        # packages_distributions() was added in Python 3.10 -- on 3.9,
-        # this attribute won't exist. Fall through to "dev".
-        pass
     except PackageNotFoundError:
         pass
-
     return "dev"

@@ -4,21 +4,12 @@ import datetime
 
 from inference_audit.loader import load_dataset
 from inference_audit.report import AuditReport, _get_audit_version
+from inference_audit.config import LANGUAGE_CONCERN_LANGUAGES
 from inference_audit.checks.label_distribution import check_label_distribution
 from inference_audit.checks.near_duplicates import check_near_duplicates
-from inference_audit.checks.language_contamination import (
-    check_language_contamination,
-    DEFAULT_CONCERN_LANGUAGES,
-)
+from inference_audit.checks.language_contamination import check_language_contamination
 from inference_audit.checks.missing_values import check_missing_values
 from inference_audit.checks.annotation_consistency import check_annotation_consistency
-
-# NOTE: DEFAULT_CONCERN_LANGUAGES is imported directly from the check
-# module rather than a central config, per review discussion. Moving
-# it to a shared config would require editing language_contamination.py
-# to match, and that file isn't in my control on this branch yet (still
-# on Shoaib's unmerged PR). Deferring this decoupling until both files
-# can be updated together, rather than half-applying it here.
 
 
 class Auditor:
@@ -42,12 +33,10 @@ class Auditor:
             concern_languages: Optional iterable of ISO 639-1 language codes
                 to flag if confidently detected in language_contamination.
                 If not provided (None), falls back to
-                check_language_contamination's DEFAULT_CONCERN_LANGUAGES. An
-                explicitly provided empty iterable is passed through as-is
-                rather than treated as "not provided" -- the check already
-                validates and reports on an empty concern list itself, so
-                validation stays in one place rather than being duplicated
-                here.
+                config.LANGUAGE_CONCERN_LANGUAGES. An explicitly provided
+                empty iterable is passed through as-is rather than treated
+                as "not provided" -- the check already validates and
+                reports on an empty concern list itself.
 
         Returns:
             A fully populated AuditReport.
@@ -60,7 +49,7 @@ class Auditor:
 
         resolved_concern_languages = (
             concern_languages if concern_languages is not None
-            else DEFAULT_CONCERN_LANGUAGES
+            else LANGUAGE_CONCERN_LANGUAGES
         )
 
         checks = {

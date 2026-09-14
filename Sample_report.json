@@ -1,0 +1,101 @@
+{
+  "inference_audit_version": "dev",
+  "dataset": "C:\\Users\\User\\Downloads\\ruemocorp_silver.csv",
+  "rows": 134053,
+  "label_col": "predicted_emotion",
+  "text_col": "message",
+  "audit_timestamp": "2026-09-05T17:23:07.654317",
+  "overall_score": 78,
+  "checks": {
+    "label_distribution": {
+      "score": 68.64,
+      "warning": "Class imbalance detected: 'joy' has 28389 samples, 'surprise' has only 4080 (ratio 7.0:1).",
+      "total_rows": 134053,
+      "num_classes": 7,
+      "class_counts": {
+        "joy": 28389,
+        "none": 28167,
+        "disgust": 25959,
+        "sadness": 22570,
+        "anger": 18275,
+        "fear": 6613,
+        "surprise": 4080
+      },
+      "majority_count": 28389,
+      "minority_count": 4080,
+      "imbalance_ratio": 6.96,
+      "max_acceptable_ratio": 20.0,
+      "null_count": 0,
+      "null_rate": 0.0
+    },
+    "near_duplicates": {
+      "score": 56.24,
+      "warning": "46180 candidate duplicate pair(s) found among 134053 rows (58665 rows involved). 247 row(s) skipped (text shorter than 3 characters -- too short to compare reliably).",
+      "total_rows": 134053,
+      "candidate_pair_count": 46180,
+      "flagged_row_count": 58665,
+      "skipped_short_count": 247,
+      "duplicate_rate": 0.4376,
+      "threshold": 0.8,
+      "num_perm": 128,
+      "example_pairs": [
+        {
+          "row_a": "good",
+          "row_b": "Good"
+        },
+        {
+          "row_a": "munir hussain ne apne ashron par mushtamil taweel filmy career mein films ke liy",
+          "row_b": "Munir Hussain ne apne 4 ashron par mushtamil taweel filmy career mein 163 films "
+        },
+        {
+          "row_a": "jaisayy program ( kon banay gaa meera ka pati ) main drama chala same waisa hi y",
+          "row_b": "jaisayy program ( kon banay gaa meera ka pati ) main drama chala same waisa hi y"
+        },
+        {
+          "row_a": "shukria bhai",
+          "row_b": "shukria bhai"
+        },
+        {
+          "row_a": "yeh mqm ka bhi pithu hai aur noon league ka bhi mulazim",
+          "row_b": "yeh mqm ka bhi pithu hai aur noon league ka bhi mulazim"
+        }
+      ]
+    },
+    "language_contamination": {
+      "score": 90.69,
+      "warning": "12438/133670 detectable rows (9.3%) confidently detected as a concern-list language (en, hi). 383 row(s) skipped (text too short/empty for language detection).",
+      "total_rows": 134053,
+      "unique_text_count": 109191,
+      "detectable_count": 133670,
+      "skipped_undetectable_count": 383,
+      "contamination_count": 12438,
+      "contamination_rate": 0.0931,
+      "concern_languages": [
+        "en",
+        "hi"
+      ],
+      "confidence_threshold": 0.9
+    },
+    "missing_values": {
+      "score": 99.82,
+      "warning": "247/134053 rows (0.2%) flagged: 130 null, 0 whitespace-only, 117 below 3-character threshold.",
+      "total_rows": 134053,
+      "flagged_count": 247,
+      "null_count": 130,
+      "whitespace_only_count": 0,
+      "too_short_count": 117,
+      "missing_rate": 0.0018,
+      "min_length_threshold": 3
+    },
+    "annotation_consistency": {
+      "score": 87.83,
+      "warning": "16320/134053 annotated samples (12.2%) have confidence below 0.6.",
+      "total_rows": 134053,
+      "non_null_count": 134053,
+      "null_count": 0,
+      "low_confidence_count": 16320,
+      "low_confidence_rate": 0.1217,
+      "confidence_threshold": 0.6
+    }
+  }
+}
