@@ -1,3 +1,7 @@
+[![PyPI](https://img.shields.io/pypi/v/inference-audit-pk)](https://pypi.org/project/inference-audit-pk/)
+[![Python](https://img.shields.io/pypi/pyversions/inference-audit-pk)](https://pypi.org/project/inference-audit-pk/)
+[![CI](https://github.com/Inference-LAB/inference-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/Inference-LAB/inference-audit/actions)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 # inference-audit
 
 An NLP dataset quality auditor. Run one command, get a reproducible report covering five quality checks and an overall score.This pip installable python library is built so a dataset that scores well is something you can actually cite as evidence of quality, not just a number.
