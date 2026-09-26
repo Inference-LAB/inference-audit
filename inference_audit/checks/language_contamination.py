@@ -150,7 +150,8 @@ def check_language_contamination(
     # --- Improvement 2: run those per-unique-text detections in
     # parallel across CPU cores when there are enough of them to make
     # the process-pool overhead worthwhile. Each detection is fully
-    # independent of every other, so this is embarrassingly parallel. ---
+    # independent of every other, so this is embarrassingly parallel.
+    # clear error for Windows multiprocessing guard issue ---
     if len(unique_texts) >= _PARALLEL_THRESHOLD:
         max_workers = min(32, (os.cpu_count() or 4))
         try:

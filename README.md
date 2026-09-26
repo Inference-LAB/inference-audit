@@ -198,7 +198,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Authors
 
-Built as part of the Inference Lab Engineering Fellowship, Cohort 01 — Project C.
+Built as part of the INFERENCE Lab Engineering Fellowship, Cohort 01 — Project C.
 
 - **Khadija Faisal** (Lead Engineer) — [GitHub](https://github.com/khadijja1) · [LinkedIn](https://www.linkedin.com/in/khadijjafaisal)
 - **Muhammad Shoaib Altaf** (Research & Implementation Engineer) — [GitHub](https://github.com/Shoaib-Altaf) · [LinkedIn](https://www.linkedin.com/in/muhammad-shoaib-altaf-6ab3a8326)

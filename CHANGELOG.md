@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.1.1] - 2026-09-26
+## [0.1.1] - 2026-09-XX
 
 ### Fixed
 - Clearer error message when `Auditor.audit()` is called from a top-level

@@ -10,6 +10,7 @@ readme = "README.md"
 requires-python = ">=3.9"
 license = {file = "LICENSE"}
 authors = [
+    {name = "INFERENCE Lab"},
     {name = "Khadija Faisal"},
     {name = "Muhammad Shoaib Altaf"},
 ]
