@@ -150,11 +150,23 @@ def check_language_contamination(
     # --- Improvement 2: run those per-unique-text detections in
     # parallel across CPU cores when there are enough of them to make
     # the process-pool overhead worthwhile. Each detection is fully
-    # independent of every other, so this is embarrassingly parallel. ---
+    # independent of every other, so this is embarrassingly parallel.
+    # clear error for Windows multiprocessing guard issue ---
     if len(unique_texts) >= _PARALLEL_THRESHOLD:
         max_workers = min(32, (os.cpu_count() or 4))
-        with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker) as executor:
-            results = list(executor.map(_detect_one, unique_texts, chunksize=200))
+        try:
+            with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_worker) as executor:
+                results = list(executor.map(_detect_one, unique_texts, chunksize=200))
+        except RuntimeError as e:
+            if "bootstrapping phase" in str(e):
+                raise RuntimeError(
+                "language_contamination uses multiprocessing for performance on "
+                "large datasets. On Windows, calling Auditor.audit() from a "
+                "top-level script requires wrapping your code in "
+                "`if __name__ == '__main__':`. See the README's Quickstart "
+                "section for a working example."
+            ) from e
+            raise
     else:
         results = [_detect_one(t) for t in unique_texts]
 

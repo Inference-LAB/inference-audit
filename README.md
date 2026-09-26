@@ -1,10 +1,11 @@
+# inference-audit
+
 [![PyPI](https://img.shields.io/pypi/v/inference-audit-pk)](https://pypi.org/project/inference-audit-pk/)
 [![Python](https://img.shields.io/pypi/pyversions/inference-audit-pk)](https://pypi.org/project/inference-audit-pk/)
 [![CI](https://github.com/Inference-LAB/inference-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/Inference-LAB/inference-audit/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-# inference-audit
 
-An NLP dataset quality auditor. Run one command, get a reproducible report covering five quality checks and an overall score.This pip installable python library is built so a dataset that scores well is something you can actually cite as evidence of quality, not just a number.
+An NLP dataset quality auditor. Run one command, get a reproducible report covering five quality checks and an overall score. This pip installable python library is built so a dataset that scores well is something you can actually cite as evidence of quality, not just a number.
 
 ```
 pip install inference-audit-pk
@@ -13,6 +14,10 @@ pip install inference-audit-pk
 ## Why this exists
 
 Every stage of an NLP pipeline from publishing a dataset, choosing one for training , depends on quality that's usually checked with a one-off script written from scratch each time, producing results that aren't comparable across projects or papers. `inference-audit` replaces that with a standard, versioned, reproducible check anyone can run and cite.
+
+## A note on the Python examples below
+
+Every Python example in this README is wrapped in `if __name__ == "__main__":`. This is required on Windows, not a style choice: `language_contamination` uses a process pool internally for performance, and Windows has no `fork()`, so it re-imports your entry script to create each worker process. Without the guard, that re-import re-triggers your top-level code, causing a runtime error. If you're calling `Auditor.audit()` from inside a function (e.g. in a larger application) rather than a bare top-level script, the guard is not needed there — it only matters for code sitting directly at module level in the file you run.
 
 ## Quickstart
 
@@ -23,11 +28,12 @@ The simplest case — audits a dataset using the five checks with default settin
 ```python
 from inference_audit import Auditor
 
-auditor = Auditor()
-report = auditor.audit("dataset.csv", label_col="emotion", text_col="text")
+if __name__ == "__main__":
+    auditor = Auditor()
+    report = auditor.audit("dataset.csv", label_col="emotion", text_col="text")
 
-report.save("audit_report.html")     # human-readable, self-contained HTML
-report.to_json("audit_report.json")  # machine-readable, for CI pipelines
+    report.save("audit_report.html")     # human-readable, self-contained HTML
+    report.to_json("audit_report.json")  # machine-readable, for CI pipelines
 ```
 
 ```bash
@@ -50,10 +56,15 @@ inference-audit run dataset.csv `
 If your dataset includes an annotation confidence or agreement score per row, pass it in to enable the `annotation_consistency` check — otherwise this check is silently skipped rather than scored.
 
 ```python
-report = auditor.audit(
-    "dataset.csv", label_col="emotion", text_col="text",
-    conf_col="confidence",
-)
+from inference_audit import Auditor
+
+if __name__ == "__main__":
+    auditor = Auditor()
+    report = auditor.audit(
+        "dataset.csv", label_col="emotion", text_col="text",
+        conf_col="confidence",
+    )
+    report.save("audit_report.html")
 ```
 
 ```bash
@@ -78,10 +89,15 @@ inference-audit run dataset.csv `
 `language_contamination` defaults to flagging English/Hindi as contamination risks. If your dataset has a different realistic contamination risk (e.g. an English dataset where French or Spanish leakage is the actual concern), override the default rather than relying on it.
 
 ```python
-report = auditor.audit(
-    "dataset.csv", label_col="label", text_col="text",
-    concern_languages=("fr", "es"),
-)
+from inference_audit import Auditor
+
+if __name__ == "__main__":
+    auditor = Auditor()
+    report = auditor.audit(
+        "dataset.csv", label_col="label", text_col="text",
+        concern_languages=("fr", "es"),
+    )
+    report.save("audit_report.html")
 ```
 
 ```bash
@@ -135,11 +151,14 @@ Each check returns a score (0–100), an optional warning, and detailed metrics.
 | `--concern-languages` | No | Comma-separated ISO 639-1 codes to flag if detected (default: `en,hi`) |
 | `--fail-below` | No | Exit with code 1 if the overall score is below this value (0–100) |
 
+The CLI does not require the `if __name__ == "__main__":` guard — that's already handled internally.
+
 ## Known Limitations
 
 - **Language detection has no real signal for some languages.** The underlying detection library has no language profile for some languages (Roman Urdu being a notable example), so `language_contamination` doesn't attempt to identify "the dataset's language" — it only flags confident detections of specific languages on a configurable concern list. Text in an undetectable language can still occasionally be misdetected as a concern-list language (measured false-positive rate: roughly 10–12% on real Roman Urdu test data) — this is a bounded, documented limitation, not a bug.
 - **Performance on very large datasets.** Recent optimizations (deduplication before comparison, parallelized language detection) significantly improved runtime on large datasets, but `near_duplicates` and `language_contamination` remain the two most compute-intensive checks. On datasets over 100K rows, a full audit can still take up to several minutes (up to ~5 minutes observed on a 100K+ row real-world dataset) depending on text diversity and duplication rate. If you're auditing a very large corpus, expect these two checks to dominate total runtime.
 - **`--concern-languages` defaults to English/Hindi.** This is a reasonable general-purpose default, particularly for code-switched or Roman-script corpora where English/Hindi leakage is a common risk — but it is not universally correct. If you're auditing a dataset with a different realistic contamination risk, override this flag rather than relying on the default.
+- **On Windows, the Python API requires an `if __name__ == "__main__":` guard** when called from a top-level script, due to how `language_contamination`'s process pool is created without `fork()` support. See the note above the Quickstart section. The CLI is unaffected.
 
 ## Example Output
 
@@ -179,7 +198,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## Authors
 
-Built as part of the Inference Lab Engineering Fellowship, Cohort 01 — Project C.
+Built as part of the INFERENCE Lab Engineering Fellowship, Cohort 01 — Project C.
 
 - **Khadija Faisal** (Lead Engineer) — [GitHub](https://github.com/khadijja1) · [LinkedIn](https://www.linkedin.com/in/khadijjafaisal)
 - **Muhammad Shoaib Altaf** (Research & Implementation Engineer) — [GitHub](https://github.com/Shoaib-Altaf) · [LinkedIn](https://www.linkedin.com/in/muhammad-shoaib-altaf-6ab3a8326)
